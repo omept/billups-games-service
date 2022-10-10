@@ -1,27 +1,10 @@
 version: '3'
 
 networks:
-  backend:
   billups:
     external: true
 
 services:
-  choicesv-golang:
-    build: 
-      context: ./choice-service
-      dockerfile: Dockerfile
-    container_name: choicesv_golang
-    restart: unless-stopped
-    ports:
-      - "8081:8081"
-    networks:
-      - backend
-      - billups
-    labels:
-    # This is enableing treafik to proxy this service
-      - "traefik.enable=true"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
   traefik:
     image: traefik:v2.3
     command:
@@ -32,9 +15,43 @@ services:
       - "--entrypoints.billups.address=:8000"
     restart: always
     ports:
-      - "8000:80"
+      - "8000:8000"
       - "8080:8080" # The Web UI (enabled by --api)
-    networks:
-      - billups
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+  choicesv:
+    build: 
+      context: ./choice-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+    expose:
+      - 8081
+    labels:
+    # This is enableing treafik to proxy this service
+      - "traefik.enable=true"
+      - "traefik.http.routers.randomchoice.rule=Path(`/choice`)"
+      - "traefik.http.routers.choices.rule=Path(`/choices`)"
+      - "traefik.http.routers.choicesvhealth.rule=Path(`/choicesv/health`)"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+  playsv:
+    build: 
+      context: ./play-service
+      dockerfile: Dockerfile
+    environment: 
+      - RANDOM_CHOICE_URL=http://traefik:8000/choice
+    restart: unless-stopped
+    deploy:
+      replicas: 1
+    expose:
+      - 8082
+    labels:
+    # This is enableing treafik to proxy this service
+      - "traefik.enable=true"
+      - "traefik.http.routers.playsv.rule=Path(`/play`)"
+      - "traefik.http.routers.playsvhealth.rule=Path(`/playsv/health`)"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+  
